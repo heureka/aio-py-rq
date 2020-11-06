@@ -1,0 +1,56 @@
+version: '3'
+services:
+
+  tests:
+    build: .
+    image: aiopyrq:latest
+    command: python -m pytest -vv tests
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+
+  tests5:
+    build: .
+    image: aiopyrq:latest
+    command: python -m pytest -vv tests
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis5
+
+  tests4:
+    build: .
+    image: aiopyrq:latest
+    command: python -m pytest -vv tests
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis4
+
+  redis:
+    container_name: redis
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    restart: always
+
+  redis5:
+    container_name: redis
+    image: redis:5
+    ports:
+      - "6379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    restart: always
+
+  redis4:
+    container_name: redis
+    image: redis:4
+    ports:
+      - "6379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    restart: always

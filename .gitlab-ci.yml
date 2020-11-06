@@ -1,0 +1,16 @@
+image: registry.gitlab.heu.cz/docker-tools/pipelines:v1
+
+variables:
+  IMAGE: "registry.gitlab.heu.cz/catalogue/tools/aiopyrq"
+  TAG: "$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHA"
+  TAG_BEFORE: "$CI_COMMIT_REF_SLUG-$CI_COMMIT_BEFORE_SHA"
+
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  - local: .gitlab/ci/build.yml
+  - local: .gitlab/ci/test.yml
+  - local: .gitlab/ci/deploy.yml

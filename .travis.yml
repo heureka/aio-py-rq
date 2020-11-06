@@ -1,0 +1,10 @@
+language: python
+
+services:
+  - docker
+
+before_install:
+  - make build
+
+script:
+  - docker-compose up tests
