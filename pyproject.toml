@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiopyrq"
-version = "0.1.2"
+version = "1.0.2"
 description = ""
 authors = ["Purple <purpledevs@heureka.cz>"]
 

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='aio-py-rq',
-    version='1.0.1',
+    version='1.0.2',
     packages=['aiopyrq'],
     url='https://github.com/heureka/aio-py-rq',
     license='MIT',
