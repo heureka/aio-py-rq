@@ -72,7 +72,7 @@ async def test_add_items_with_multiple_chunks():
         chunks_count = 3
         items = ['item-{}'.format(i) for i in range(chunks_count * CHUNK_SIZE)]
         await queue_instance.add_items(items)
-        assert slaves_mock.call_count == chunks_count
+        assert slaves_mock.call_count == 1
 
     await deactivate_test(client)
 
