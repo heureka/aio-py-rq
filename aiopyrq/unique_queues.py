@@ -84,9 +84,8 @@ class UniqueQueue(object):
         """
         :param items: List of items to be added via pipeline
         """
-        pipeline = self.redis.pipeline()
-
         for chunk in helpers.create_chunks(items, CHUNK_SIZE):
+            pipeline = self.redis.pipeline()
             for item in chunk:
                 await self.add_command(keys=[self.queue_name, self.set_name], args=[str(item)], client=pipeline)
             await pipeline.execute()
