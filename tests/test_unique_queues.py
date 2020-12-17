@@ -5,7 +5,7 @@ import pytest
 
 from asynctest import patch
 
-from aiopyrq.unique_queues import UniqueQueue
+from aiopyrq.unique_queues import UniqueQueue, CHUNK_SIZE
 from aioredis.connection import create_connection
 
 QUEUE_NAME = os.getenv('QUEUE_NAME', 'test-queue')
@@ -61,6 +61,18 @@ async def test_add_items():
         assert items[1] == await client.execute('rpop', QUEUE_NAME)
         assert await client.execute('rpop', QUEUE_NAME) is None
         assert 1 == slaves_mock.call_count
+
+    await deactivate_test(client)
+
+
+@pytest.mark.asyncio
+async def test_add_items_with_multiple_chunks():
+    client, queue_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        chunks_count = 3
+        items = ['item-{}'.format(i) for i in range(chunks_count * CHUNK_SIZE)]
+        await queue_instance.add_items(items)
+        assert slaves_mock.call_count == chunks_count
 
     await deactivate_test(client)
 
