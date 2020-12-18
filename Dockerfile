@@ -9,7 +9,7 @@ COPY pyproject.toml pyproject.toml
 COPY poetry.lock poetry.lock
 
 RUN poetry config virtualenvs.create false
-RUN poetry install
+RUN poetry install --no-root
 
 COPY aiopyrq aiopyrq
 COPY tests tests
