@@ -1,8 +1,11 @@
 [tool.poetry]
-name = "aiopyrq"
+name = "aio-py-rq"
 version = "1.0.2"
 description = ""
 authors = ["Purple <purpledevs@heureka.cz>"]
+packages = [
+	{ include="aiopyrq" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.7"
