@@ -1,3 +1,21 @@
+"""
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+"""
 import time
 import socket
 import os
@@ -131,12 +149,13 @@ class Queue(object):
         """
         pipeline = self.redis.pipeline()
         for item in reversed(items):
-            await self.reject_command(keys=[self.name, self.processing_queue_name, self.timeouts_hash_name], args=[str(item)],
+            await self.reject_command(keys=[self.name, self.processing_queue_name, self.timeouts_hash_name],
+                                      args=[str(item)],
                                       client=pipeline)
         await pipeline.execute()
         await self._wait_for_synced_slaves()
 
-    async def re_enqueue_timeout_items(self, timeout: int=PROCESSING_TIMEOUT) -> None:
+    async def re_enqueue_timeout_items(self, timeout: int = PROCESSING_TIMEOUT) -> None:
         """
         :param timeout: int seconds
         """
@@ -154,7 +173,7 @@ class Queue(object):
             await self.re_enqueue_command(keys=[self.name, queue, self.timeouts_hash_name])
         await self._wait_for_synced_slaves()
 
-    async def drop_timeout_items(self, timeout: int=PROCESSING_TIMEOUT) -> None:
+    async def drop_timeout_items(self, timeout: int = PROCESSING_TIMEOUT) -> None:
         """
         :param timeout: int seconds
         """

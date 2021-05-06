@@ -8,7 +8,7 @@ setup(
     version='1.0.2',
     packages=['aiopyrq'],
     url='https://github.com/heureka/aio-py-rq',
-    license='MIT',
+    license='Apache 2.0',
     author='Heureka.cz',
     author_email='podpora@heureka.cz',
     description='Redis queue for Asynchronous Python',
