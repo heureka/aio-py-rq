@@ -159,12 +159,12 @@ class UniqueQueue(object):
         logging.info(f'AIOPYRQcurrent_timeout {current_timeout}')
         logging.info(f'AIOPYRQNOW time {now_time}')
 
-        logging.info(f"AIOPYRQ time elapsed: {now_time - current_retry_count}, max_timeout: {self.options['max_timeout']}")
+        logging.info(f"AIOPYRQ time elapsed: {now_time - current_timeout}, max_timeout: {self.options['max_timeout']}")
         logging.info(f"AIOPYRQ current count larger: {current_retry_count > self.options['max_retry']}")
 
         if (
             current_retry_count > self.options['max_retry']
-            and now_time - current_retry_count > self.options['max_timeout']
+            and now_time - current_timeout > self.options['max_timeout']
         ):
             # too many rollbacks
             return False
