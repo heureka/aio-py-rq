@@ -16,6 +16,7 @@ limitations under the License.
 import time
 import socket
 import os
+import logging
 
 from typing import Union
 
@@ -152,6 +153,15 @@ class UniqueQueue(object):
         now_time = int(time.time()/60)
         current_retry_count, current_timeout = await self.get_retry_and_timeout_command(keys=[self.retry_count_name, self.retry_timeout_name],
                                                                           args=[str(item), now_time])
+        current_retry_count, current_timeout = int(current_retry_count), int(current_timeout)
+
+        logging.info(f'AIOPYRQcurrent retry count {current_retry_count}')
+        logging.info(f'AIOPYRQcurrent_timeout {current_timeout}')
+        logging.info(f'AIOPYRQNOW time {now_time}')
+
+        logging.info(f"AIOPYRQ time elapsed: {now_time - current_retry_count}, max_timeout: {self.options['max_timeout']}")
+        logging.info(f"AIOPYRQ current count larger: {current_retry_count > self.options['max_retry']}")
+
         if (
             current_retry_count > self.options['max_retry']
             and now_time - current_retry_count > self.options['max_timeout']
@@ -323,7 +333,7 @@ class UniqueQueue(object):
             local orig_time = redis.call('hget', hash_timeout, item)
             local retry_count = redis.call('hget', hash_retry, item)
 
-            return retry_count, orig_time
+            return {retry_count, orig_time}
             """
 
         @staticmethod
