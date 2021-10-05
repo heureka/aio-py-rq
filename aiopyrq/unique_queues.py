@@ -16,7 +16,6 @@ limitations under the License.
 import time
 import socket
 import os
-import logging
 
 from typing import Union
 
@@ -140,20 +139,22 @@ class UniqueQueue(object):
 
     async def can_rollback_item(self, item) -> bool:
         """
-        Check if `item` has not been rolledback too many times
+        Check if `item` has not been rolledback too many times (`self.options['max_retry_rollback']`).
+        Each item is, however, allowed to stay in the queue for some specific time (`self.options['max_timeout_in_queue']`).
+        Because item which is rolled back several times in a short period should not be removed.
 
         :param item: Anything that is convertible to str
         """
 
-        if not self.options['max_retry'] or not self.options['max_timeout']:
-            raise ValueError('Argument `max_retry` not supplied to UniqueQueue')
+        if not self.options['max_retry_rollback'] or not self.options['max_timeout_in_queue']:
+            raise ValueError('Arguments `max_retry_rollback` or `max_timeout_in_queue` not supplied to UniqueQueue.')
 
         now_time = int(time.time()/60)
         current_retry_count, current_timeout = await self.get_retry_and_timeout_command(keys=[self.retry_count_name, self.retry_timeout_name],
                                                                           args=[str(item), now_time])
         current_retry_count, current_timeout = int(current_retry_count), int(current_timeout)
 
-        if current_retry_count > self.options['max_retry'] and now_time - current_timeout > self.options['max_timeout']:
+        if current_retry_count > self.options['max_retry_rollback'] and now_time - current_timeout > self.options['max_timeout_in_queue']:
             # too many rollbacks
             return False
         return True
