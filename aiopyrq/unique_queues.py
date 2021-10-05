@@ -80,6 +80,7 @@ class UniqueQueue(object):
         self.reject_command = self._register_script(self.QueueCommand.reject())
         self.re_enqueue_command = self._register_script(self.QueueCommand.re_enqueue())
         self.get_retry_and_timeout_command = self._register_script(self.QueueCommand.get_retry_and_timeout())
+        self.reset_retry_and_timeout_command = self._register_script(self.QueueCommand.reset_retry_and_timeout())
 
     def _register_script(self, script: str) -> Script:
         return Script(self.redis, script)
@@ -158,6 +159,14 @@ class UniqueQueue(object):
             # too many rollbacks
             return False
         return True
+
+    async def reset_blocked_item(self, item) -> None:
+        """
+        Remove the retry counter and reset the timeout for `item` is either of them exist.
+
+        :param item: Anything that is convertible to str
+        """
+        await self.reset_retry_and_timeout_command(keys=[self.retry_count_name, self.retry_timeout_name], args=[str(item)])
 
     async def reject_item(self, item) -> None:
         """
@@ -302,7 +311,6 @@ class UniqueQueue(object):
             """
             :return: LUA Script for getting timeout and retry count
             """
-            # TODO finish
             return """
             local hash_retry = KEYS[1]
             local hash_timeout = KEYS[2]
@@ -403,4 +411,19 @@ class UniqueQueue(object):
                 end
             end
             redis.call('hdel', timeouts, processing)
+            """
+
+        @staticmethod
+        def reset_retry_and_timeout():
+            """
+            :return: LUA Script for getting timeout and retry count
+            """
+            return """
+            local hash_retry = KEYS[1]
+            local hash_timeout = KEYS[2]
+
+            local item = ARGV[1]
+
+            redis.call('hdel', hash_retry, item)
+            redis.call('hdel', hash_timeout, item)
             """
