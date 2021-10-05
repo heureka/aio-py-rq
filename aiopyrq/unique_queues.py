@@ -138,34 +138,22 @@ class UniqueQueue(object):
         await pipeline.execute()
         await self._wait_for_synced_slaves()
 
-    async def check_rollback_item(self, item) -> bool:
+    async def can_rollback_item(self, item) -> bool:
         """
         Check if `item` has not been rolledback too many times
 
         :param item: Anything that is convertible to str
         """
 
-        # TODO - where should this be called? this class or the one that holds it (before actual rollback)?
         if not self.options['max_retry'] or not self.options['max_timeout']:
             raise ValueError('Argument `max_retry` not supplied to UniqueQueue')
-        # TODO difference between this timeout and the one I want
 
         now_time = int(time.time()/60)
         current_retry_count, current_timeout = await self.get_retry_and_timeout_command(keys=[self.retry_count_name, self.retry_timeout_name],
                                                                           args=[str(item), now_time])
         current_retry_count, current_timeout = int(current_retry_count), int(current_timeout)
 
-        logging.info(f'AIOPYRQcurrent retry count {current_retry_count}')
-        logging.info(f'AIOPYRQcurrent_timeout {current_timeout}')
-        logging.info(f'AIOPYRQNOW time {now_time}')
-
-        logging.info(f"AIOPYRQ time elapsed: {now_time - current_timeout}, max_timeout: {self.options['max_timeout']}")
-        logging.info(f"AIOPYRQ current count larger: {current_retry_count > self.options['max_retry']}")
-
-        if (
-            current_retry_count > self.options['max_retry']
-            and now_time - current_timeout > self.options['max_timeout']
-        ):
+        if current_retry_count > self.options['max_retry'] and now_time - current_timeout > self.options['max_timeout']:
             # too many rollbacks
             return False
         return True
