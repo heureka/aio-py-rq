@@ -35,7 +35,7 @@ REDIS_DB = int(os.getenv('REDIS_DB', 0))
 REDIS_PASSWORD = os.getenv('REDIS_PASS', None)
 
 
-async def init_test():
+async def init_test(**kwargs):
 
     synced_slaves_count = 1
     synced_slaves_timeout = 2
@@ -45,7 +45,7 @@ async def init_test():
     await remove_all_test_queues(client)
 
     queue_instance = UniqueQueue(QUEUE_NAME, client, synced_slaves_enabled=True,
-                                 synced_slaves_count=synced_slaves_count, synced_slaves_timeout=synced_slaves_timeout)
+                                 synced_slaves_count=synced_slaves_count, synced_slaves_timeout=synced_slaves_timeout, kwargs=kwargs)
 
     return client, queue_instance
 
@@ -364,6 +364,39 @@ async def test_drop_all_items():
         assert [] == await client.execute('keys', QUEUE_NAME + '*')
 
         assert 1 == slaves_mock.call_count
+
+    await deactivate_test(client)
+
+
+@pytest.mark.asyncio
+async def test_rollback_timeout():
+    max_retry = 3
+    max_minutes = 2
+    client, queue_instance = await init_test(max_retry=max_retry, max_timeout=max_minutes)
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        #time_start = 1000  # artificial time in minutes (int) from start of epoch
+        time_start = int(time.now()/60)
+        items = [1,2,3,4]
+
+        await client.execute('lpush', queue_instance.processing_queue_name, *items)
+
+        await queue_instance.drop_all_items()
+        rolledback_items = []
+
+        for i in range(int((max_minutes+1)*60)):
+            for item in items[1:]:
+                can_rollback = await queue_instance.can_rollback_item(item)
+                if can_rollback:
+                    await queue_instance.reject_item(item)
+                    rolledback_items.append(item)
+            if len(set(rolledback_items)) == 3:
+                break
+            time.sleep(int((max_minutes+1)*6)) # repeat for at least max_minutes + 1
+
+        assert len(set(rolledback_items)) == 3
+
+        can_rollback = await queue_instance.can_rollback_item(items[0])
+        assert can_rollback == False
 
     await deactivate_test(client)
 
