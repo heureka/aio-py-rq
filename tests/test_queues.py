@@ -346,5 +346,37 @@ async def test_drop_all_items():
     await deactivate_test(client)
 
 
+@pytest.mark.asyncio
+async def test_rollback_timeout():
+    max_retry = 3
+    max_minutes = 2
+    client, queue_instance = await init_test(max_retry=max_retry, max_timeout=max_minutes)
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        time_start = int(time.now()/60)
+        items = [1,2,3,4]
+
+        await client.execute('lpush', queue_instance.processing_queue_name, *items)
+
+        await queue_instance.drop_all_items()
+        rolledback_items = []
+
+        for i in range(int((max_minutes+1)*60)):
+            for item in items[1:]:
+                can_rollback = await queue_instance.can_rollback_item(item)
+                if can_rollback:
+                    await queue_instance.reject_item(item)
+                    rolledback_items.append(item)
+            if len(set(rolledback_items)) == 3:
+                break
+            time.sleep(int((max_minutes+1)*6)) # repeat for at least max_minutes + 1
+
+        assert len(set(rolledback_items)) == 3
+
+        can_rollback = await queue_instance.can_rollback_item(items[0])
+        assert can_rollback == False
+
+    await deactivate_test(client)
+
+
 if __name__ == 'main':
     pytest.main()

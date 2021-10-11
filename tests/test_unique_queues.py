@@ -374,7 +374,6 @@ async def test_rollback_timeout():
     max_minutes = 2
     client, queue_instance = await init_test(max_retry=max_retry, max_timeout=max_minutes)
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        #time_start = 1000  # artificial time in minutes (int) from start of epoch
         time_start = int(time.now()/60)
         items = [1,2,3,4]
 
