@@ -34,7 +34,7 @@ REDIS_DB = int(os.getenv('REDIS_DB', 0))
 REDIS_PASSWORD = os.getenv('REDIS_PASS', None)
 
 
-async def init_test():
+async def init_test(**kwargs):
 
     synced_slaves_count = 1
     synced_slaves_timeout = 2
@@ -44,7 +44,7 @@ async def init_test():
     await remove_all_test_queues(client)
 
     queue_instance = Queue(QUEUE_NAME, client, synced_slaves_enabled=True, synced_slaves_count=synced_slaves_count,
-                           synced_slaves_timeout=synced_slaves_timeout)
+                           synced_slaves_timeout=synced_slaves_timeout, **kwargs)
 
     return client, queue_instance
 

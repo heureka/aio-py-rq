@@ -45,7 +45,7 @@ async def init_test(**kwargs):
     await remove_all_test_queues(client)
 
     queue_instance = UniqueQueue(QUEUE_NAME, client, synced_slaves_enabled=True,
-                                 synced_slaves_count=synced_slaves_count, synced_slaves_timeout=synced_slaves_timeout, kwargs=kwargs)
+                                 synced_slaves_count=synced_slaves_count, synced_slaves_timeout=synced_slaves_timeout, **kwargs)
 
     return client, queue_instance
 
