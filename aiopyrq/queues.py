@@ -26,6 +26,8 @@ from aiopyrq import helpers
 from aiopyrq.script import Script
 
 CHUNK_SIZE = 10
+RETRY_SUFFIX = '-retry-count'
+TIMEOUT_SUFFIX = '-retry-timeout'
 PROCESSING_SUFFIX = '-processing'
 PROCESSING_TIMEOUT_SUFFIX = '-timeouts'
 PROCESSING_TIMEOUT = 7200  # seconds
@@ -73,6 +75,8 @@ class Queue(object):
         self.get_command = self._register_script(self.QueueCommand.get())
         self.reject_command = self._register_script(self.QueueCommand.reject())
         self.re_enqueue_command = self._register_script(self.QueueCommand.re_enqueue())
+        self.get_retry_and_timeout_command = self._register_script(self.QueueCommand.get_retry_and_timeout())
+        self.reset_retry_and_timeout_command = self._register_script(self.QueueCommand.reset_retry_and_timeout())
 
     def _register_script(self, script: str) -> Script:
         return Script(self.redis, script)
@@ -131,6 +135,39 @@ class Queue(object):
                                    client=pipeline)
         await pipeline.execute()
         await self._wait_for_synced_slaves()
+
+
+    async def can_rollback_item(self, item) -> bool:
+        """
+        Check if `item` has not been rolledback too many times (`self.options['max_retry_rollback']`).
+        Each item is, however, allowed to stay in the queue for some specific time (`self.options['max_timeout_in_queue']`).
+        Because item which is rolled back several times in a short period should not be removed.
+
+        :param item: Anything that is convertible to str
+        """
+
+        if not self.options['max_retry_rollback'] or not self.options['max_timeout_in_queue']:
+            raise ValueError('Arguments `max_retry_rollback` or `max_timeout_in_queue` not supplied to Queue.')
+
+        now_time = int(time.time()/60)
+        current_retry_count, current_timeout = await self.get_retry_and_timeout_command(keys=[self.retry_count_name, self.retry_timeout_name],
+                                                                          args=[str(item), now_time])
+        current_retry_count, current_timeout = int(current_retry_count), int(current_timeout)
+
+        if current_retry_count > self.options['max_retry_rollback'] and now_time - current_timeout > self.options['max_timeout_in_queue']:
+            # too many rollbacks
+            return False
+        return True
+
+
+    async def reset_blocked_item(self, item) -> None:
+        """
+        Remove the retry counter and reset the timeout for `item` is either of them exist.
+
+        :param item: Anything that is convertible to str
+        """
+        await self.reset_retry_and_timeout_command(keys=[self.retry_count_name, self.retry_timeout_name], args=[str(item)])
+
 
     async def reject_item(self, item) -> None:
         """
@@ -193,6 +230,20 @@ class Queue(object):
         return sorted(await helpers.async_iterate_to_list(self.redis.ihscan(self.timeouts_hash_name)), reverse=True)
 
     @property
+    def retry_count_name(self) -> str:
+        """
+        :return: Name of the retry counter hash
+        """
+        return self.name + RETRY_SUFFIX
+
+    @property
+    def retry_timeout_name(self) -> str:
+        """
+        :return: Name of the retry timeout hash
+        """
+        return self.name + TIMEOUT_SUFFIX
+
+    @property
     def processing_queue_name(self) -> str:
         """
         :return: Name of the processing queue
@@ -239,6 +290,33 @@ class Queue(object):
             if count == 0 then
                redis.call('hdel', timeouts, processing)
             end
+            """
+
+        @staticmethod
+        def get_retry_and_timeout():
+            """
+            :return: LUA Script for getting timeout and retry count
+            """
+            return """
+            local hash_retry = KEYS[1]
+            local hash_timeout = KEYS[2]
+
+            local item = ARGV[1]
+            local now_time = ARGV[2]
+
+            local count = redis.call('hget', hash_retry, item)
+
+            if not count then
+                redis.call('hset', hash_retry, item, 0)
+                redis.call('hset', hash_timeout, item, now_time)
+            end
+
+            redis.call('hincrby', hash_retry, item, 1)
+
+            local orig_time = redis.call('hget', hash_timeout, item)
+            local retry_count = redis.call('hget', hash_retry, item)
+
+            return {retry_count, orig_time}
             """
 
         @staticmethod
@@ -316,4 +394,19 @@ class Queue(object):
             end
 
             redis.call('hdel', timeouts, processing)
+            """
+
+        @staticmethod
+        def reset_retry_and_timeout():
+            """
+            :return: LUA Script for getting timeout and retry count
+            """
+            return """
+            local hash_retry = KEYS[1]
+            local hash_timeout = KEYS[2]
+
+            local item = ARGV[1]
+
+            redis.call('hdel', hash_retry, item)
+            redis.call('hdel', hash_timeout, item)
             """
