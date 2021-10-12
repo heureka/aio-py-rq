@@ -101,6 +101,39 @@ async def go():
 asyncio.run(go())
 ```
 
+#### Example: check rollback counter
+It is possible to check if an item has not been rolledback (reverted) too many times in a window period.
+
+The `Queue` has the same functions.
+
+```python
+import asyncio
+import aioredis
+from aiopyrq import UniqueQueue
+
+async def go():
+
+    redis_connection_pool = await aioredis.create_redis_pool('redis://localhost')
+    queue = UniqueQueue(QUEUE_NAME, redis_connection_pool, synced_slaves_enabled=True, synced_slaves_count=COUNT_OF_SLAVES, synced_slaves_timeout=TIMEOUT, max_retry=10, max_timeout=180)
+    
+    queue.add_item(value) # adding item
+    
+    list_of_values = queue.get_items(10) # getting items
+    for item in list_of_values:
+        # if there are too many reverts for given item it deleted
+        if queue.can_rollback_item(item):
+            queue.revert_items(list_of_values)
+
+
+    for item in list_of_values:
+        # reset counter and timeout for all item
+        queue.reset_blocked_item(item)
+        
+
+asyncio.run(go())
+```
+
+
 ### Pool
 Use `from aiopyrq import Pool`.
 
