@@ -368,23 +368,6 @@ async def test_drop_all_items():
     await deactivate_test(client)
 
 
-@pytest.fixture
-def patch_time(monkeypatch):
-    class mytime:
-        counter = 0
-        @classmethod
-        def time(cls):
-            cls.counter += 60
-            return cls.counter
-
-        @classmethod
-        def sleep(cls, time=0):
-            return 0
-
-    monkeypatch.setattr(time, 'time', mytime.time)
-    monkeypatch.setattr(time, 'sleep', mytime.sleep)
-
-
 @pytest.mark.asyncio
 async def test_rollback_timeout(patch_time):
     max_retry = 3
