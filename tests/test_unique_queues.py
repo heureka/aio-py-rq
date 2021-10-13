@@ -368,10 +368,27 @@ async def test_drop_all_items():
     await deactivate_test(client)
 
 
+@pytest.fixture
+def patch_time(monkeypatch):
+    class mytime:
+        counter = 0
+        @classmethod
+        def time(cls):
+            cls.counter += 60
+            return cls.counter
+
+        @classmethod
+        def sleep(cls, time=0):
+            return 0
+
+    monkeypatch.setattr(time, 'time', mytime.time)
+    monkeypatch.setattr(time, 'sleep', mytime.sleep)
+
+
 @pytest.mark.asyncio
-async def test_rollback_timeout():
+async def test_rollback_timeout(patch_time):
     max_retry = 3
-    max_minutes = 2
+    max_minutes = 10
     client, queue_instance = await init_test(max_retry_rollback=max_retry, max_timeout_in_queue=max_minutes)
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         items = [1,2,3,4]
@@ -379,29 +396,29 @@ async def test_rollback_timeout():
         await client.execute('lpush', queue_instance.processing_queue_name, *items)
 
         await queue_instance.drop_all_items()
-        rolledback_items = []
+        unrolledback_items = []
 
-        time.sleep(10)
         time_start = int(time.time()/60)
         time_now = int(time.time()/60)
-        while time_now - time_start <= max_minutes:  # add one for possible inconsistencies in timing
+        rollback_counter = 0
+        for _ in range(100):  # add one for possible inconsistencies in timing
             for item in items[1:]:
                 can_rollback = await queue_instance.can_rollback_item(item)
                 if can_rollback:
-                    await queue_instance.reject_item(item)
-                    rolledback_items.append(item)
-            if len(set(rolledback_items)) == 3:
+                    rollback_counter += 1
+                    # a reject would happen here in normal situation
+                else:
+                    unrolledback_items.append(item)
+            if len(set(unrolledback_items)) == 3:
                 break
-            time.sleep(10)
             time_now = int(time.time()/60)
 
-        assert len(set(rolledback_items)) == 3
+        assert len(set(unrolledback_items)) == 3
 
         can_rollback = await queue_instance.can_rollback_item(items[0])
         assert can_rollback == True
 
     await deactivate_test(client)
-
 
 if __name__ == 'main':
     pytest.main()
