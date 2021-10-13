@@ -120,9 +120,9 @@ async def go():
     
     list_of_values = queue.get_items(10) # getting items
     for item in list_of_values:
-        # if there are too many reverts for given item it deleted
+        # if there are too many rejects for given item it deleted
         if queue.can_rollback_item(item):
-            queue.revert_items(list_of_values)
+            queue.reject_item(item)
 
 
     for item in list_of_values:
