@@ -35,7 +35,7 @@ REDIS_DB = int(os.getenv('REDIS_DB', 0))
 REDIS_PASSWORD = os.getenv('REDIS_PASS', None)
 
 
-async def init_test():
+async def init_test(**kwargs):
 
     synced_slaves_count = 1
     synced_slaves_timeout = 2
@@ -45,7 +45,7 @@ async def init_test():
     await remove_all_test_queues(client)
 
     queue_instance = UniqueQueue(QUEUE_NAME, client, synced_slaves_enabled=True,
-                                 synced_slaves_count=synced_slaves_count, synced_slaves_timeout=synced_slaves_timeout)
+                                 synced_slaves_count=synced_slaves_count, synced_slaves_timeout=synced_slaves_timeout, **kwargs)
 
     return client, queue_instance
 
@@ -367,6 +367,41 @@ async def test_drop_all_items():
 
     await deactivate_test(client)
 
+
+@pytest.mark.asyncio
+async def test_rollback_timeout(patch_time):
+    max_retry = 3
+    max_minutes = 10
+    client, queue_instance = await init_test(max_retry_rollback=max_retry, max_timeout_in_queue=max_minutes)
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        items = [1,2,3,4]
+
+        await client.execute('lpush', queue_instance.processing_queue_name, *items)
+
+        await queue_instance.drop_all_items()
+        unrolledback_items = []
+
+        time_start = int(time.time()/60)
+        time_now = int(time.time()/60)
+        rollback_counter = 0
+        for _ in range(100):  # add one for possible inconsistencies in timing
+            for item in items[1:]:
+                can_rollback = await queue_instance.can_rollback_item(item)
+                if can_rollback:
+                    rollback_counter += 1
+                    # a reject would happen here in normal situation
+                else:
+                    unrolledback_items.append(item)
+            if len(set(unrolledback_items)) == 3:
+                break
+            time_now = int(time.time()/60)
+
+        assert len(set(unrolledback_items)) == 3
+
+        can_rollback = await queue_instance.can_rollback_item(items[0])
+        assert can_rollback == True
+
+    await deactivate_test(client)
 
 if __name__ == 'main':
     pytest.main()
