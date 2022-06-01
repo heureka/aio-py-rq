@@ -110,6 +110,38 @@ async def test_get_items():
 
 
 @pytest.mark.asyncio
+async def test_delete_item():
+    client, queue_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        for i in [3, 5, 6, 3, 1, 4]:
+            await client.execute('lpush', QUEUE_NAME, i)
+        await queue_instance.delete_item(2, 3)
+        assert ['4', '1', '6', '5'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
+        await queue_instance.delete_item(1, 4)
+        assert ['1', '6', '5'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
+        await client.execute('del', queue_instance.processing_queue_name)
+        await client.execute('del', queue_instance.timeouts_hash_name)
+        assert 3 == slaves_mock.call_count
+
+    await deactivate_test(client)
+
+
+@pytest.mark.asyncio
+async def test_delete_item():
+    client, queue_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        for i in [3, 5, 6, 3, 1, 4]:
+            await client.execute('lpush', QUEUE_NAME, i)
+        await queue_instance.delete_items(1, [1, 3, 4, 5])
+        assert ['6'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
+        await client.execute('del', queue_instance.processing_queue_name)
+        await client.execute('del', queue_instance.timeouts_hash_name)
+        assert 1 == slaves_mock.call_count
+
+    await deactivate_test(client)
+
+
+@pytest.mark.asyncio
 async def test_ack_item():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
