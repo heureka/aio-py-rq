@@ -136,29 +136,6 @@ class Queue(object):
         await pipeline.execute()
         await self._wait_for_synced_slaves()
 
-    async def delete_item(self, count: int, item) -> bool:
-        """
-        :param count: Number occurrences equal to the item to be deleted
-        :param item: Anything that is convertible to str
-        :return: Returns true if item was deleted from a queue, false otherwise
-        """
-        result = await self.redis.lrem(self.name, count, item)
-        await self._wait_for_synced_slaves()
-
-        return result
-
-    async def delete_items(self, count: int, items: list) -> None:
-        """
-        :param count: Number occurrences equal to each item in items list to be deleted
-        :param items: List of items to be deleted via pipeline
-        """
-        pipeline = self.redis.pipeline()
-
-        for chunk in helpers.create_chunks(items, CHUNK_SIZE):
-            pipeline.lrem(self.name, count, *chunk)
-        await pipeline.execute()
-        await self._wait_for_synced_slaves()
-
     async def can_rollback_item(self, item) -> bool:
         """
         Check if `item` has not been rolledback too many times (`self.options['max_retry_rollback']`).
@@ -180,7 +157,6 @@ class Queue(object):
             # too many rollbacks
             return False
         return True
-
 
     async def reset_blocked_item(self, item) -> None:
         """

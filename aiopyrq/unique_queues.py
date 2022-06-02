@@ -77,6 +77,7 @@ class UniqueQueue(object):
         self.add_command = self._register_script(self.QueueCommand.add())
         self.ack_command = self._register_script(self.QueueCommand.ack())
         self.get_command = self._register_script(self.QueueCommand.get())
+        self.delete_command = self._register_script(self.QueueCommand.delete())
         self.reject_command = self._register_script(self.QueueCommand.reject())
         self.re_enqueue_command = self._register_script(self.QueueCommand.re_enqueue())
         self.get_retry_and_timeout_command = self._register_script(self.QueueCommand.get_retry_and_timeout())
@@ -107,6 +108,30 @@ class UniqueQueue(object):
             pipeline = self.redis.pipeline()
             for item in chunk:
                 await self.add_command(keys=[self.queue_name, self.set_name], args=[str(item)], client=pipeline)
+            await pipeline.execute()
+
+        await self._wait_for_synced_slaves()
+
+    async def delete_item(self, item) -> None:
+        """
+        :param item: Anything that is convertible to str
+        """
+        await self.delete_command(keys=[self.queue_name, self.set_name, self.processing_queue_name,
+                                      self.timeouts_hash_name], args=[int(time.time()), str(item)])
+
+        await self._wait_for_synced_slaves()
+
+    async def delete_items(self, items: list) -> None:
+        """
+        :param items: List of items to be deleted via pipeline
+        """
+        for chunk in helpers.create_chunks(items, CHUNK_SIZE):
+            pipeline = self.redis.pipeline()
+            for item in chunk:
+                await self.delete_command(keys=[self.queue_name, self.set_name, self.processing_queue_name,
+                                      self.timeouts_hash_name],
+                                          args=[int(time.time()), str(item)],
+                                          client=pipeline)
             await pipeline.execute()
 
         await self._wait_for_synced_slaves()
@@ -357,6 +382,28 @@ class UniqueQueue(object):
                 table.insert(items, item)
             end
             return items
+            """
+
+        @staticmethod
+        def delete():
+            """
+            :return: LUA Script for DELETE command
+            """
+            return """
+            local queue = KEYS[1]
+            local set = KEYS[2]
+            local processing = KEYS[3]
+            local timeouts = KEYS[4]
+            local time = ARGV[1]
+            local item = ARGV[2]
+            redis.call('hset', timeouts, processing, time)
+            while true do
+                local removed = redis.call('lrem', queue, -1, item)
+                if removed == 0 then
+                    break
+                end
+            end
+            redis.call('srem', set, item)
             """
 
         @staticmethod
