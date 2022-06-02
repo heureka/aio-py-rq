@@ -132,7 +132,7 @@ async def test_delete_item():
         for i in [3, 5, 6, 3, 1, 4]:
             await client.execute('lpush', QUEUE_NAME, i)
         await queue_instance.delete_item(3)
-        assert ['4', '1', '6', '5'] == await client.execute('lrange', QUEUE_NAME, 0, 5)
+        assert ['4', '1', '6', '5'] == await client.execute('lrange', QUEUE_NAME, 0, -1)
 
     await deactivate_test(client)
 
@@ -144,7 +144,7 @@ async def test_delete_items():
         for i in [3, 5, 6, 3, 1, 4]:
             await client.execute('lpush', QUEUE_NAME, i)
         await queue_instance.delete_items([1, 3, 4, 5])
-        assert ['6'] == await client.execute('lrange', QUEUE_NAME, 0, 5)
+        assert ['6'] == await client.execute('lrange', QUEUE_NAME, 0, -1)
 
     await deactivate_test(client)
 
