@@ -116,8 +116,7 @@ class UniqueQueue(object):
         """
         :param item: Anything that is convertible to str
         """
-        await self.delete_command(keys=[self.queue_name, self.set_name, self.processing_queue_name,
-                                      self.timeouts_hash_name], args=[int(time.time()), str(item)])
+        await self.delete_command(keys=[self.queue_name, self.set_name], args=[str(item)])
 
         await self._wait_for_synced_slaves()
 
@@ -128,10 +127,7 @@ class UniqueQueue(object):
         for chunk in helpers.create_chunks(items, CHUNK_SIZE):
             pipeline = self.redis.pipeline()
             for item in chunk:
-                await self.delete_command(keys=[self.queue_name, self.set_name, self.processing_queue_name,
-                                      self.timeouts_hash_name],
-                                          args=[int(time.time()), str(item)],
-                                          client=pipeline)
+                await self.delete_command(keys=[self.queue_name, self.set_name], args=[str(item)], client=pipeline)
             await pipeline.execute()
 
         await self._wait_for_synced_slaves()
@@ -392,17 +388,8 @@ class UniqueQueue(object):
             return """
             local queue = KEYS[1]
             local set = KEYS[2]
-            local processing = KEYS[3]
-            local timeouts = KEYS[4]
-            local time = ARGV[1]
-            local item = ARGV[2]
-            redis.call('hset', timeouts, processing, time)
-            while true do
-                local removed = redis.call('lrem', queue, -1, item)
-                if removed == 0 then
-                    break
-                end
-            end
+            local item = ARGV[1]
+            local removed = redis.call('lrem', queue, 0, item)
             redis.call('srem', set, item)
             """
 
