@@ -108,6 +108,26 @@ class Queue(object):
         await pipeline.execute()
         await self._wait_for_synced_slaves()
 
+    async def delete_item(self, item) -> None:
+        """
+        Will delete all item occurrences in the queue.
+        :param item: Anything that is convertible to str
+        """
+        await self.redis.lrem(self.name, 0, item)
+        await self._wait_for_synced_slaves()
+
+    async def delete_items(self, items: list) -> None:
+        """
+        Will delete all items occurrences in the queue via pipeline.
+        :param items: List of items to be deleted via pipeline
+        """
+        for chunk in helpers.create_chunks(items, CHUNK_SIZE):
+            pipeline = self.redis.pipeline()
+            for item in chunk:
+                pipeline.lrem(self.name, 0, item)
+            await pipeline.execute()
+        await self._wait_for_synced_slaves()
+
     async def get_items(self, count: int) -> list:
         """
         :param count: Number of items to be returned
