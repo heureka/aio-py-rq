@@ -18,7 +18,7 @@ import os
 import pytest
 
 from asynctest import patch
-from aioredis.commands import create_redis
+from redis.asyncio.utils import from_url
 
 from aiopyrq.pools import Pool
 
@@ -37,8 +37,8 @@ async def init_test():
 
     synced_slaves_count = 1
     synced_slaves_timeout = 2
-    client = await create_redis(address=(REDIS_HOST, REDIS_PORT), db=REDIS_DB, password=REDIS_PASSWORD,
-                                encoding='utf-8')
+    client = await from_url(url=f'redis://{REDIS_HOST}:{REDIS_PORT}', db=REDIS_DB, password=REDIS_PASSWORD,
+                            encoding='utf-8', decode_responses=True)
 
     await remove_all_test_queues(client)
 
@@ -51,8 +51,7 @@ async def init_test():
 async def deactivate_test(client):
     await remove_all_test_queues(client)
 
-    client.close()
-    await client.wait_closed()
+    await client.close()
 
 
 async def remove_all_test_queues(client):
@@ -74,8 +73,8 @@ async def test_get_count():
 async def test_get_count_to_process():
     client, pool_instance = await init_test()
     timestamp = int(time.time())
-    pairs = [timestamp - 5, 'a', timestamp - 3, 'b', timestamp + 5, 'c']
-    await client.zadd(POOL_NAME, *pairs)
+    pairs = {'a': timestamp - 5, 'b': timestamp - 3, 'c': timestamp + 5}
+    await client.zadd(POOL_NAME, pairs)
 
     assert 2 == await pool_instance.get_count_to_process()
     assert [POOL_NAME] == await client.keys('*')
@@ -259,7 +258,7 @@ async def test_real_use_case_example():
         assert 7 == await client.zcard(POOL_NAME)
         assert [str(item) for item in test_data] == await client.zrange(POOL_NAME, 0, 10)
 
-        await client.zadd(POOL_NAME, TEST_TIME + 5, 7)
+        await client.zadd(POOL_NAME, {7: TEST_TIME + 5})
 
         assert ['1', '2', '3'] == await pool_instance.get_items(3)
 
@@ -293,23 +292,24 @@ async def test_real_use_case_example():
 
 
 async def _load_test_data_to_pool(client):
-    prepared_items = [
-        TEST_TIME - 10 + 600.1, 'a',
-        TEST_TIME - 5 + 600.1, 'b',
-        TEST_TIME - 2 + 600.1, 'c',
-        TEST_TIME + 600.1, 'd',
-        TEST_TIME + 5, 'e'
-    ]
-    await client.zadd(POOL_NAME, *prepared_items)
+    prepared_items = {
+        'a': TEST_TIME - 10 + 600.1,
+        'b': TEST_TIME - 5 + 600.1,
+        'c': TEST_TIME - 2 + 600.1,
+        'd': TEST_TIME + 600.1,
+        'e': TEST_TIME + 5,
+    }
+    await client.zadd(POOL_NAME, prepared_items)
 
 
 async def _load_items_to_pool(client, *args):
     timestamp = int(time.time())
-    prepared_items = []
+    prepared_items = {}
     for item in args:
-        prepared_items.append(timestamp)
-        prepared_items.append(item)
-    await client.zadd(POOL_NAME, *prepared_items)
+        prepared_items.update({
+            item: timestamp,
+        })
+    await client.zadd(POOL_NAME, prepared_items)
 
 
 if __name__ == 'main':

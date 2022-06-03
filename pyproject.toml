@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aio-py-rq"
-version = "2.1.1"
+version = "3.0.0"
 description = ""
 authors = ["Heureka <vyvoj@heureka.cz>"]
 packages = [
@@ -9,11 +9,10 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.7"
-aioredis = {version = "^1.2"}
+redis = "^4.3.3"
 
 [tool.poetry.dev-dependencies]
-pytest = "^4.5"
-pytest-asyncio = "^0.10"
+pytest-asyncio = "^0.18"
 asynctest = "^0.13"
 
 [build-system]

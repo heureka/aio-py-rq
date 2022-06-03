@@ -20,9 +20,9 @@ import os
 import pytest
 
 from asynctest import patch
+from redis.asyncio.utils import from_url
 
 from aiopyrq.unique_queues import UniqueQueue, CHUNK_SIZE
-from aioredis.connection import create_connection
 
 QUEUE_NAME = os.getenv('QUEUE_NAME', 'test-queue')
 PROCESSING_QUEUE_SCHEMA = QUEUE_NAME + '-processing-{}[{}][{}]'
@@ -39,8 +39,8 @@ async def init_test(**kwargs):
 
     synced_slaves_count = 1
     synced_slaves_timeout = 2
-    client = await create_connection(address=(REDIS_HOST, REDIS_PORT), db=REDIS_DB, password=REDIS_PASSWORD,
-                                     encoding='utf-8')
+    client = await from_url(url=f'redis://{REDIS_HOST}:{REDIS_PORT}', db=REDIS_DB, password=REDIS_PASSWORD,
+                            encoding='utf-8', decode_responses=True)
 
     await remove_all_test_queues(client)
 
@@ -53,12 +53,11 @@ async def init_test(**kwargs):
 async def deactivate_test(client):
     await remove_all_test_queues(client)
 
-    client.close()
-    await client.wait_closed()
+    await client.close()
 
 
 async def remove_all_test_queues(client):
-    await client.execute('eval', """
+    await client.execute_command('eval', """
             local keys = redis.call("keys", ARGV[1])
             for i, key in ipairs(keys) do
                 redis.call("del", key)
@@ -73,9 +72,9 @@ async def test_add_items():
         items = ['first-message', 'second-message', 'first-message']
 
         await queue_instance.add_items(items)
-        assert items[0] == await client.execute('rpop', QUEUE_NAME)
-        assert items[1] == await client.execute('rpop', QUEUE_NAME)
-        assert await client.execute('rpop', QUEUE_NAME) is None
+        assert items[0] == await client.execute_command('rpop', QUEUE_NAME)
+        assert items[1] == await client.execute_command('rpop', QUEUE_NAME)
+        assert await client.execute_command('rpop', QUEUE_NAME) is None
         assert 1 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -100,7 +99,7 @@ async def test_add_item():
         items = [3, 5, 3, 1]
         for i in items:
             await queue_instance.add_item(i)
-        actual_items = await client.execute('lrange', QUEUE_NAME, 0, 5)
+        actual_items = await client.execute_command('lrange', QUEUE_NAME, 0, 5)
         for item in ['5', '3', '1']:
             assert item in actual_items
 
@@ -114,12 +113,12 @@ async def test_get_items():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         for i in [3, 5, 3, 1]:
-            await client.execute('lpush', QUEUE_NAME, i)
+            await client.execute_command('lpush', QUEUE_NAME, i)
         assert ['3', '5', '3'] == await queue_instance.get_items(3)
         assert ['1'] == await queue_instance.get_items(1)
         assert [] == await queue_instance.get_items(1)
-        await client.execute('del', queue_instance.processing_queue_name)
-        await client.execute('del', queue_instance.timeouts_hash_name)
+        await client.execute_command('del', queue_instance.processing_queue_name)
+        await client.execute_command('del', queue_instance.timeouts_hash_name)
         assert 0 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -130,9 +129,9 @@ async def test_delete_item():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         for i in [3, 5, 6, 3, 1, 4]:
-            await client.execute('lpush', QUEUE_NAME, i)
+            await client.execute_command('lpush', QUEUE_NAME, i)
         await queue_instance.delete_item(3)
-        assert ['4', '1', '6', '5'] == await client.execute('lrange', QUEUE_NAME, 0, -1)
+        assert ['4', '1', '6', '5'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
 
     await deactivate_test(client)
 
@@ -142,9 +141,9 @@ async def test_delete_items():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         for i in [3, 5, 6, 3, 1, 4]:
-            await client.execute('lpush', QUEUE_NAME, i)
+            await client.execute_command('lpush', QUEUE_NAME, i)
         await queue_instance.delete_items([1, 3, 4, 5])
-        assert ['6'] == await client.execute('lrange', QUEUE_NAME, 0, -1)
+        assert ['6'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
 
     await deactivate_test(client)
 
@@ -153,21 +152,21 @@ async def test_delete_items():
 async def test_ack_item():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        await client.execute('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3])
+        await client.execute_command('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3])
 
         saved_time = int(time.time())
-        await client.execute('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
+        await client.execute_command('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
         for i in [1, 5, 1]:
             await queue_instance.ack_item(i)
 
-        assert ['3', '5'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
-        assert [queue_instance.processing_queue_name,  str(saved_time)] == \
-            await client.execute('hgetall', queue_instance.timeouts_hash_name)
+        assert ['3', '5'] == await client.execute_command('lrange', queue_instance.processing_queue_name, 0, 5)
+        assert {queue_instance.processing_queue_name:  str(saved_time)} == \
+            await client.execute_command('hgetall', queue_instance.timeouts_hash_name)
 
         for i in [5, 3]:
             await queue_instance.ack_item(i)
 
-        assert 0 == await client.execute('llen', queue_instance.processing_queue_name)
+        assert 0 == await client.execute_command('llen', queue_instance.processing_queue_name)
         assert 5 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -177,18 +176,18 @@ async def test_ack_item():
 async def test_ack_items():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        await client.execute('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3, 6, 7])
+        await client.execute_command('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3, 6, 7])
         saved_time = int(time.time())
-        await client.execute('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
+        await client.execute_command('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
         await queue_instance.ack_items([1, 5])
         await queue_instance.ack_items([1])
 
-        assert ['7', '6', '3', '5'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
-        assert [queue_instance.processing_queue_name,  str(saved_time)] == await client.execute('hgetall', queue_instance.timeouts_hash_name)
+        assert ['7', '6', '3', '5'] == await client.execute_command('lrange', queue_instance.processing_queue_name, 0, 5)
+        assert {queue_instance.processing_queue_name:  str(saved_time)} == await client.execute_command('hgetall', queue_instance.timeouts_hash_name)
 
         await queue_instance.ack_items([5, 3, 6])
         await queue_instance.ack_items([7])
-        assert 0 == await client.execute('llen', queue_instance.processing_queue_name)
+        assert 0 == await client.execute_command('llen', queue_instance.processing_queue_name)
         assert 4 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -198,22 +197,22 @@ async def test_ack_items():
 async def test_reject_item():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        await client.execute('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3])
+        await client.execute_command('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3])
         saved_time = int(time.time())
-        await client.execute('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
+        await client.execute_command('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
 
         await queue_instance.reject_item(1)
         await queue_instance.reject_item(5)
         await queue_instance.reject_item(1)
 
-        assert ['1', '5'] == await client.execute('lrange', QUEUE_NAME, 0, 5)
-        assert ['3', '5'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
-        assert [queue_instance.processing_queue_name,  str(saved_time)] == await client.execute('hgetall', queue_instance.timeouts_hash_name)
+        assert ['1', '5'] == await client.execute_command('lrange', QUEUE_NAME, 0, 5)
+        assert ['3', '5'] == await client.execute_command('lrange', queue_instance.processing_queue_name, 0, 5)
+        assert {queue_instance.processing_queue_name:  str(saved_time)} == await client.execute_command('hgetall', queue_instance.timeouts_hash_name)
 
         await queue_instance.reject_item(3)
         await queue_instance.reject_item(5)
-        assert ['1', '5', '3'] == await client.execute('lrange', QUEUE_NAME, 0, 5)
-        assert 0 == await client.execute('llen', queue_instance.processing_queue_name)
+        assert ['1', '5', '3'] == await client.execute_command('lrange', QUEUE_NAME, 0, 5)
+        assert 0 == await client.execute_command('llen', queue_instance.processing_queue_name)
         assert 5 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -223,21 +222,21 @@ async def test_reject_item():
 async def test_reject_items():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        await client.execute('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3, 6, 7])
+        await client.execute_command('lpush', queue_instance.processing_queue_name, *[1, 5, 5, 3, 6, 7])
         saved_time = int(time.time())
-        await client.execute('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
+        await client.execute_command('hset', queue_instance.timeouts_hash_name, queue_instance.processing_queue_name, saved_time)
 
         await queue_instance.reject_items([1, 5])
         await queue_instance.reject_items([5])
         await queue_instance.reject_items([9])
 
-        assert ['5', '1'] == await client.execute('lrange', QUEUE_NAME, 0, 5)
-        assert ['7', '6', '3'] == await client.execute('lrange', queue_instance.processing_queue_name, 0, 5)
-        assert [queue_instance.processing_queue_name,  str(saved_time)] == await client.execute('hgetall', queue_instance.timeouts_hash_name)
+        assert ['5', '1'] == await client.execute_command('lrange', QUEUE_NAME, 0, 5)
+        assert ['7', '6', '3'] == await client.execute_command('lrange', queue_instance.processing_queue_name, 0, 5)
+        assert {queue_instance.processing_queue_name:  str(saved_time)} == await client.execute_command('hgetall', queue_instance.timeouts_hash_name)
 
         await queue_instance.reject_items([3, 6, 7])
-        assert ['5', '1', '7', '6', '3'] == await client.execute('lrange', QUEUE_NAME, 0, 10)
-        assert 0 == await client.execute('llen', queue_instance.processing_queue_name)
+        assert ['5', '1', '7', '6', '3'] == await client.execute_command('lrange', QUEUE_NAME, 0, 10)
+        assert 0 == await client.execute_command('llen', queue_instance.processing_queue_name)
         assert 4 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -255,7 +254,7 @@ async def test_integration():
         await queue_instance.reject_items([2, 6, 7])
         assert ['2', '6', '7'] == await queue_instance.get_items(5)
         await queue_instance.ack_items([2, 6, 7])
-        assert 0 == await client.execute('llen', QUEUE_NAME)
+        assert 0 == await client.execute_command('llen', QUEUE_NAME)
         assert 4 == slaves_mock.call_count
 
     await deactivate_test(client)
@@ -269,29 +268,29 @@ async def test_re_enqueue_timeout_items():
         timestamp = int(microtimestamp)
 
         processing_queue1 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 15)
-        await client.execute('lpush', processing_queue1, 1, 5, 3)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
+        await client.execute_command('lpush', processing_queue1, 1, 5, 3)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
 
         processing_queue2 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 10)
-        await client.execute('lpush', processing_queue2, 1, 4, 6)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
+        await client.execute_command('lpush', processing_queue2, 1, 4, 6)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
 
         processing_queue3 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 5)
-        await client.execute('lpush', processing_queue3, 4, 7, 8)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
+        await client.execute_command('lpush', processing_queue3, 4, 7, 8)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
 
         await queue_instance.re_enqueue_timeout_items(7)
 
-        assert ['6', '4', '3', '5', '1'] == await client.execute('lrange', QUEUE_NAME, 0, 10)
-        assert ['8', '7', '4'] == await client.execute('lrange', processing_queue3, 0, 5)
-        assert [processing_queue3,  str(microtimestamp - 5)] == await client.execute('hgetall', TIMEOUT_QUEUE)
+        assert ['6', '4', '3', '5', '1'] == await client.execute_command('lrange', QUEUE_NAME, 0, 10)
+        assert ['8', '7', '4'] == await client.execute_command('lrange', processing_queue3, 0, 5)
+        assert {processing_queue3:  str(microtimestamp - 5)} == await client.execute_command('hgetall', TIMEOUT_QUEUE)
         assert [QUEUE_NAME, processing_queue3, TIMEOUT_QUEUE, SET_QUEUE_NAME] == \
-               sorted(await client.execute('keys', QUEUE_NAME + '*'))
+               sorted(await client.execute_command('keys', QUEUE_NAME + '*'))
 
         await queue_instance.re_enqueue_timeout_items(0)
 
-        assert ['6', '3', '5', '1', '8', '7', '4'] == await client.execute('lrange', QUEUE_NAME, 0, 10)
-        assert [QUEUE_NAME, SET_QUEUE_NAME] == sorted(await client.execute('keys', QUEUE_NAME + '*'))
+        assert ['6', '3', '5', '1', '8', '7', '4'] == await client.execute_command('lrange', QUEUE_NAME, 0, 10)
+        assert [QUEUE_NAME, SET_QUEUE_NAME] == sorted(await client.execute_command('keys', QUEUE_NAME + '*'))
 
         assert 2 == slaves_mock.call_count
 
@@ -306,21 +305,21 @@ async def test_re_enqueue_all_times():
         timestamp = int(microtimestamp)
 
         processing_queue1 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 15)
-        await client.execute('lpush', processing_queue1, 1, 5, 3)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
+        await client.execute_command('lpush', processing_queue1, 1, 5, 3)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
 
         processing_queue2 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 10)
-        await client.execute('lpush', processing_queue2, 1, 4, 6)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
+        await client.execute_command('lpush', processing_queue2, 1, 4, 6)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
 
         processing_queue3 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 5)
-        await client.execute('lpush', processing_queue3, 4, 7, 8)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
+        await client.execute_command('lpush', processing_queue3, 4, 7, 8)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
 
         await queue_instance.re_enqueue_all_items()
 
-        assert ['8', '7', '6', '4', '3', '5', '1'] == await client.execute('lrange', QUEUE_NAME, 0, 10)
-        assert [QUEUE_NAME, SET_QUEUE_NAME] == sorted(await client.execute('keys', QUEUE_NAME + '*'))
+        assert ['8', '7', '6', '4', '3', '5', '1'] == await client.execute_command('lrange', QUEUE_NAME, 0, 10)
+        assert [QUEUE_NAME, SET_QUEUE_NAME] == sorted(await client.execute_command('keys', QUEUE_NAME + '*'))
 
         assert 1 == slaves_mock.call_count
 
@@ -335,28 +334,28 @@ async def test_drop_timeout_items():
         timestamp = int(microtimestamp)
 
         processing_queue1 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 15)
-        await client.execute('lpush', processing_queue1, 1, 5, 3)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
+        await client.execute_command('lpush', processing_queue1, 1, 5, 3)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
 
         processing_queue2 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 10)
-        await client.execute('lpush', processing_queue2, 1, 4, 6)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
+        await client.execute_command('lpush', processing_queue2, 1, 4, 6)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
 
         processing_queue3 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 5)
-        await client.execute('lpush', processing_queue3, 4, 7, 8)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
+        await client.execute_command('lpush', processing_queue3, 4, 7, 8)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
 
         await queue_instance.drop_timeout_items(7)
 
-        assert [] == await client.execute('lrange', QUEUE_NAME, 0, 5)
-        assert ['8', '7', '4'] == await client.execute('lrange', processing_queue3, 0, 5)
-        assert [processing_queue3,  str(microtimestamp - 5)] == await client.execute('hgetall', TIMEOUT_QUEUE)
-        assert [processing_queue3, TIMEOUT_QUEUE] == sorted(await client.execute('keys', QUEUE_NAME + '*'))
+        assert [] == await client.execute_command('lrange', QUEUE_NAME, 0, 5)
+        assert ['8', '7', '4'] == await client.execute_command('lrange', processing_queue3, 0, 5)
+        assert {processing_queue3:  str(microtimestamp - 5)} == await client.execute_command('hgetall', TIMEOUT_QUEUE)
+        assert [processing_queue3, TIMEOUT_QUEUE] == sorted(await client.execute_command('keys', QUEUE_NAME + '*'))
 
         await queue_instance.drop_timeout_items(0)
 
-        assert [] == await client.execute('lrange', QUEUE_NAME, 0, 10)
-        assert [] == await client.execute('keys', QUEUE_NAME + '*')
+        assert [] == await client.execute_command('lrange', QUEUE_NAME, 0, 10)
+        assert [] == await client.execute_command('keys', QUEUE_NAME + '*')
 
         assert 2 == slaves_mock.call_count
 
@@ -371,21 +370,21 @@ async def test_drop_all_items():
         timestamp = int(microtimestamp)
 
         processing_queue1 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 15)
-        await client.execute('lpush', processing_queue1, 1, 5, 3)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
+        await client.execute_command('lpush', processing_queue1, 1, 5, 3)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue1, microtimestamp - 15)
 
         processing_queue2 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 10)
-        await client.execute('lpush', processing_queue2, 1, 4, 6)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
+        await client.execute_command('lpush', processing_queue2, 1, 4, 6)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue2, microtimestamp - 10)
 
         processing_queue3 = PROCESSING_QUEUE_SCHEMA.format(socket.gethostname(), os.getpid(), timestamp - 5)
-        await client.execute('lpush', processing_queue3, 4, 7, 8)
-        await client.execute('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
+        await client.execute_command('lpush', processing_queue3, 4, 7, 8)
+        await client.execute_command('hset', TIMEOUT_QUEUE, processing_queue3, microtimestamp - 5)
 
         await queue_instance.drop_all_items()
 
-        assert [] == await client.execute('lrange', QUEUE_NAME, 0, 10)
-        assert [] == await client.execute('keys', QUEUE_NAME + '*')
+        assert [] == await client.execute_command('lrange', QUEUE_NAME, 0, 10)
+        assert [] == await client.execute_command('keys', QUEUE_NAME + '*')
 
         assert 1 == slaves_mock.call_count
 
@@ -400,7 +399,7 @@ async def test_rollback_timeout(patch_time):
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         items = [1,2,3,4]
 
-        await client.execute('lpush', queue_instance.processing_queue_name, *items)
+        await client.execute_command('lpush', queue_instance.processing_queue_name, *items)
 
         await queue_instance.drop_all_items()
         unrolledback_items = []

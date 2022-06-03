@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='aio-py-rq',
-    version='2.1.1',
+    version='3.0.0',
     packages=['aiopyrq'],
     url='https://github.com/heureka/aio-py-rq',
     license='Apache 2.0',
@@ -15,6 +15,6 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "aioredis>1.3.1"
+        "redis>4.3.3"
     ]
 )

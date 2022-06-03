@@ -19,12 +19,11 @@ import os
 
 from typing import Union
 
-from aioredis.connection import RedisConnection
-from aioredis.pool import ConnectionsPool
-from aioredis.commands import Redis
+from redis.asyncio.client import Redis
+from redis.asyncio.connection import ConnectionPool, Connection
+from redis.commands.core import AsyncScript
 
 from aiopyrq import helpers
-from aiopyrq.script import Script
 
 DEFAULT_CHUNK_SIZE = 100
 DEFAULT_SYNC_SLAVES_COUNT = 0
@@ -34,7 +33,7 @@ DEFAULT_ACK_VALID_FOR = 129600  # seconds
 
 
 class Pool(object):
-    def __init__(self, name: str, redis: Union[ConnectionsPool, RedisConnection, Redis], **kwargs):
+    def __init__(self, name: str, redis: Union[ConnectionPool, Connection, Redis], **kwargs):
         """
         Pool is intended for "queues" which are most of the time the same - the items need to be processed periodically.
         This is exactly how the pool works - it processes items that are "outdated". When the item is processed (ACKed),
@@ -55,8 +54,8 @@ class Pool(object):
         """
         self.client_id = '{0}[{1}][{2}]'.format(socket.gethostname(), os.getpid(), int(time.time()))
 
-        if isinstance(redis, (ConnectionsPool, RedisConnection)):
-            redis = Redis(redis)
+        if isinstance(redis, (ConnectionPool, Connection)):
+            redis = Redis(connection_pool=redis)
 
         self.redis = redis
         self.name = name
@@ -79,8 +78,8 @@ class Pool(object):
         self.get_command = self._register_script(self.PoolCommand.get())
         self.remove_command = self._register_script(self.PoolCommand.remove())
 
-    def _register_script(self, script: str) -> Script:
-        return Script(self.redis, script)
+    def _register_script(self, script: str) -> AsyncScript:
+        return AsyncScript(self.redis, script)
 
     async def get_count(self) -> int:
         """
@@ -104,7 +103,7 @@ class Pool(object):
         """
         :param item: Anything that is convertible to str
         """
-        await self.redis.zadd(self.name, int(time.time()), item)
+        await self.redis.zadd(self.name, {item: int(time.time())})
         await self._wait_for_synced_slaves()
 
     async def add_items(self, items) -> None:
@@ -114,11 +113,12 @@ class Pool(object):
         pipeline = self.redis.pipeline()
         for chunk in helpers.create_chunks(items, self.options['chunk_size']):
             current_time = int(time.time())
-            prepared_items = []
+            prepared_items = {}
             for item in chunk:
-                prepared_items.append(current_time)
-                prepared_items.append(item)
-            pipeline.zadd(self.name, *prepared_items)
+                prepared_items.update({
+                    item: current_time,
+                })
+            pipeline.zadd(self.name, prepared_items)
         await pipeline.execute()
         await self._wait_for_synced_slaves()
 

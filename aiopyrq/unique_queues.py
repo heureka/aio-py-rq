@@ -19,12 +19,11 @@ import os
 
 from typing import Union
 
-from aioredis.connection import RedisConnection
-from aioredis.pool import ConnectionsPool
-from aioredis.commands import Redis
+from redis.asyncio.client import Redis
+from redis.asyncio.connection import ConnectionPool, Connection
+from redis.commands.core import AsyncScript
 
 from aiopyrq import helpers
-from aiopyrq.script import Script
 
 CHUNK_SIZE = 10
 SET_QUEUE_SUFFIX = '-unique'
@@ -52,7 +51,7 @@ class UniqueQueue(object):
     author: Heureka.cz <vyvoj@heureka.cz>
     """
 
-    def __init__(self, queue_name: str, redis: Union[ConnectionsPool, RedisConnection, Redis], **kwargs):
+    def __init__(self, queue_name: str, redis: Union[ConnectionPool, Connection, Redis], **kwargs):
         """
         :param queue_name: Name of the queue
         :param redis: Redis client
@@ -65,8 +64,8 @@ class UniqueQueue(object):
         """
         self.client_id = '{0}[{1}][{2}]'.format(socket.gethostname(), os.getpid(), int(time.time()))
 
-        if isinstance(redis, (ConnectionsPool, RedisConnection)):
-            redis = Redis(redis)
+        if isinstance(redis, (ConnectionPool, Connection)):
+            redis = Redis(connection_pool=redis)
 
         self.redis = redis
         self.queue_name = queue_name
@@ -83,8 +82,8 @@ class UniqueQueue(object):
         self.get_retry_and_timeout_command = self._register_script(self.QueueCommand.get_retry_and_timeout())
         self.reset_retry_and_timeout_command = self._register_script(self.QueueCommand.reset_retry_and_timeout())
 
-    def _register_script(self, script: str) -> Script:
-        return Script(self.redis, script)
+    def _register_script(self, script: str) -> AsyncScript:
+        return AsyncScript(self.redis, script)
 
     async def get_count(self) -> int:
         """
@@ -247,7 +246,7 @@ class UniqueQueue(object):
         await self._wait_for_synced_slaves()
 
     async def _get_sorted_processing_queues(self) -> list:
-        return sorted(await helpers.async_iterate_to_list(self.redis.ihscan(self.timeouts_hash_name)), reverse=True)
+        return sorted(await helpers.async_iterate_to_list(self.redis.hscan_iter(self.timeouts_hash_name)), reverse=True)
 
     @property
     def set_name(self) -> str:

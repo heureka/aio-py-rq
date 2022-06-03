@@ -1,8 +1,8 @@
-FROM python:3.8-alpine3.13
+FROM python:3.10-slim-bullseye
 
 WORKDIR /aiopyrq
 
-RUN apk add --update --no-cache python3 cargo openssl-dev gcc libffi-dev libressl-dev libc-dev && pip install poetry
+RUN apt update && apt install -y build-essential && pip install poetry
 
 # install requirements
 COPY pyproject.toml pyproject.toml
