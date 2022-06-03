@@ -77,6 +77,7 @@ class UniqueQueue(object):
         self.add_command = self._register_script(self.QueueCommand.add())
         self.ack_command = self._register_script(self.QueueCommand.ack())
         self.get_command = self._register_script(self.QueueCommand.get())
+        self.delete_command = self._register_script(self.QueueCommand.delete())
         self.reject_command = self._register_script(self.QueueCommand.reject())
         self.re_enqueue_command = self._register_script(self.QueueCommand.re_enqueue())
         self.get_retry_and_timeout_command = self._register_script(self.QueueCommand.get_retry_and_timeout())
@@ -107,6 +108,26 @@ class UniqueQueue(object):
             pipeline = self.redis.pipeline()
             for item in chunk:
                 await self.add_command(keys=[self.queue_name, self.set_name], args=[str(item)], client=pipeline)
+            await pipeline.execute()
+
+        await self._wait_for_synced_slaves()
+
+    async def delete_item(self, item) -> None:
+        """
+        :param item: Anything that is convertible to str
+        """
+        await self.delete_command(keys=[self.queue_name, self.set_name], args=[str(item)])
+
+        await self._wait_for_synced_slaves()
+
+    async def delete_items(self, items: list) -> None:
+        """
+        :param items: List of items to be deleted via pipeline
+        """
+        for chunk in helpers.create_chunks(items, CHUNK_SIZE):
+            pipeline = self.redis.pipeline()
+            for item in chunk:
+                await self.delete_command(keys=[self.queue_name, self.set_name], args=[str(item)], client=pipeline)
             await pipeline.execute()
 
         await self._wait_for_synced_slaves()
@@ -357,6 +378,19 @@ class UniqueQueue(object):
                 table.insert(items, item)
             end
             return items
+            """
+
+        @staticmethod
+        def delete():
+            """
+            :return: LUA Script for DELETE command
+            """
+            return """
+            local queue = KEYS[1]
+            local set = KEYS[2]
+            local item = ARGV[1]
+            local removed = redis.call('lrem', queue, 0, item)
+            redis.call('srem', set, item)
             """
 
         @staticmethod
