@@ -52,18 +52,18 @@ This data structure serves for managing queues of **serializable** items. Typica
 
 ```python
 import asyncio
-import aioredis
+from redis.asyncio.connection import ConnectionPool
 from aiopyrq import Queue
 
 async def go():
-    redis_connection_pool = await aioredis.create_redis_pool('redis://localhost')
+    redis_connection_pool = ConnectionPool.from_url('redis://localhost', encoding='utf-8', decode_responses=True)
     queue = Queue(QUEUE_NAME, redis_connection_pool, synced_slaves_enabled=True, synced_slaves_count=COUNT_OF_SLAVES, synced_slaves_timeout=TIMEOUT)
     
     queue.add_item(value) # adding item
     
     list_of_values = queue.get_items(10) # getting items
     queue.ack_items(list_of_values) # acknowledging items or
-    queue.revert_items(list_of_values) # reverting items to the queue
+    queue.reject_items(list_of_values) # rejecting items to the queue
 
 asyncio.run(go())
 ```
@@ -84,19 +84,18 @@ This data structure serves for managing queues of **serializable** items. Typica
 
 ```python
 import asyncio
-import aioredis
+from redis.asyncio.connection import ConnectionPool
 from aiopyrq import UniqueQueue
 
 async def go():
-
-    redis_connection_pool = await aioredis.create_redis_pool('redis://localhost')
+    redis_connection_pool = ConnectionPool.from_url('redis://localhost', encoding='utf-8', decode_responses=True)
     queue = UniqueQueue(QUEUE_NAME, redis_connection_pool, synced_slaves_enabled=True, synced_slaves_count=COUNT_OF_SLAVES, synced_slaves_timeout=TIMEOUT)
     
     queue.add_item(value) # adding item
     
     list_of_values = queue.get_items(10) # getting items
     queue.ack_items(list_of_values) # acknowledging items or
-    queue.revert_items(list_of_values) # reverting items to the queue
+    queue.reject_items(list_of_values) # rejecting items to the queue
 
 asyncio.run(go())
 ```
@@ -108,12 +107,11 @@ The `Queue` has the same functions.
 
 ```python
 import asyncio
-import aioredis
+from redis.asyncio.connection import ConnectionPool
 from aiopyrq import UniqueQueue
 
 async def go():
-
-    redis_connection_pool = await aioredis.create_redis_pool('redis://localhost')
+    redis_connection_pool = ConnectionPool.from_url('redis://localhost', encoding='utf-8', decode_responses=True)
     queue = UniqueQueue(QUEUE_NAME, redis_connection_pool, synced_slaves_enabled=True, synced_slaves_count=COUNT_OF_SLAVES, synced_slaves_timeout=TIMEOUT, max_retry=10, max_timeout=180)
     
     queue.add_item(value) # adding item
@@ -149,13 +147,11 @@ This data structure is designed to manage an infinite ordered set of **serializa
 
 ```python
 import asyncio
-import aioredis
 from aiopyrq import Pool
 
 async def go():
-
-    redis_connection_pool = await aioredis.create_redis_pool('redis://localhost')
-    queue = Pool(POOL_NAME, self.client, synced_slaves_enabled=True, synced_slaves_count=COUNT_OF_SLAVES, synced_slaves_timeout=TIMEOUT)
+    redis_connection_pool = ConnectionPool.from_url('redis://localhost', encoding='utf-8', decode_responses=True)
+    queue = Pool(POOL_NAME, redis_connection_pool, synced_slaves_enabled=True, synced_slaves_count=COUNT_OF_SLAVES, synced_slaves_timeout=TIMEOUT)
 
     queue.add_item(value) # adding item
     

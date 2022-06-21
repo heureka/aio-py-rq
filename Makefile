@@ -4,4 +4,4 @@ build:
 	docker build . -t aiopyrq:latest
 
 test: build
-	docker-compose up tests tests5 tests4
+	docker-compose up tests tests7 tests6 tests5
