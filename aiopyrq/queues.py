@@ -112,7 +112,8 @@ class Queue(object):
         """
         Will delete all item occurrences in the queue.
         :param item: Anything that is convertible to str
-        :param count: Number of first item occurrences to be deleted.
+        :param count: Number of first item occurrences to be deleted. Watch out, in case of count = 0
+                      all item occurrences will be deleted
         """
         await self.redis.lrem(self.name, count, item)
         await self._wait_for_synced_slaves()
@@ -121,7 +122,8 @@ class Queue(object):
         """
         Will delete all items occurrences in the queue via pipeline.
         :param items: List of items to be deleted via pipeline
-        :param count: Number of first item occurrences to be deleted.
+        :param count: Number of first item occurrences to be deleted. Watch out, in case of count = 0
+                      all item occurrences will be deleted
         """
         for chunk in helpers.create_chunks(items, CHUNK_SIZE):
             pipeline = self.redis.pipeline()
