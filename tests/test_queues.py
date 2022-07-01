@@ -116,6 +116,7 @@ async def test_delete_item():
             await client.execute_command('lpush', QUEUE_NAME, i)
         await queue_instance.delete_item(3)
         assert ['4', '1', '6', '5'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
+        assert 1 == slaves_mock.call_count
 
     await deactivate_test(client)
 
@@ -128,6 +129,32 @@ async def test_delete_items():
             await client.execute_command('lpush', QUEUE_NAME, i)
         await queue_instance.delete_items([1, 3, 4, 5])
         assert ['6'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
+        assert 1 == slaves_mock.call_count
+
+    await deactivate_test(client)
+
+@pytest.mark.asyncio
+async def test_delete_item_one_occurrence():
+    client, queue_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        for i in [3, 5, 6, 3, 1, 4]:
+            await client.execute_command('lpush', QUEUE_NAME, i)
+        await queue_instance.delete_item(3, 1)
+        assert ['4', '1', '6', '5', '3'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
+        assert 1 == slaves_mock.call_count
+
+    await deactivate_test(client)
+
+
+@pytest.mark.asyncio
+async def test_delete_items_with_several_occurrences():
+    client, queue_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        for i in [3, 5, 6, 3, 1, 4, 4, 4]:
+            await client.execute_command('lpush', QUEUE_NAME, i)
+        await queue_instance.delete_items([1, 3, 4, 5], 1)
+        assert ['4', '4', '6', '3'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
+        assert 1 == slaves_mock.call_count
 
     await deactivate_test(client)
 

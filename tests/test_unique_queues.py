@@ -128,10 +128,10 @@ async def test_get_items():
 async def test_delete_item():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        for i in [3, 5, 6, 3, 1, 4]:
-            await client.execute_command('lpush', QUEUE_NAME, i)
+        await queue_instance.add_items([3, 5, 6, 3, 1, 4])
         await queue_instance.delete_item(3)
         assert ['4', '1', '6', '5'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
+        assert 2 == slaves_mock.call_count
 
     await deactivate_test(client)
 
@@ -140,10 +140,10 @@ async def test_delete_item():
 async def test_delete_items():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
-        for i in [3, 5, 6, 3, 1, 4]:
-            await client.execute_command('lpush', QUEUE_NAME, i)
+        await queue_instance.add_items([3, 5, 6, 3, 1, 4])
         await queue_instance.delete_items([1, 3, 4, 5])
         assert ['6'] == await client.execute_command('lrange', QUEUE_NAME, 0, -1)
+        assert 2 == slaves_mock.call_count
 
     await deactivate_test(client)
 

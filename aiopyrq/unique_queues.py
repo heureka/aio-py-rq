@@ -388,7 +388,7 @@ class UniqueQueue(object):
             local queue = KEYS[1]
             local set = KEYS[2]
             local item = ARGV[1]
-            local removed = redis.call('lrem', queue, 0, item)
+            local removed = redis.call('lrem', queue, 1, item)
             redis.call('srem', set, item)
             """
 
