@@ -291,6 +291,32 @@ async def test_real_use_case_example():
     await deactivate_test(client)
 
 
+@pytest.mark.asyncio
+async def test_delete_item():
+    client, pool_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        await _load_test_data_to_pool(client)
+        await pool_instance.delete_item('d')
+        assert ['e', 'a', 'b', 'c'] == await client.zrange(POOL_NAME, 0, -1)
+
+        assert [POOL_NAME] == await client.keys('*')
+
+    await deactivate_test(client)
+
+
+@pytest.mark.asyncio
+async def test_delete_items():
+    client, pool_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        await _load_test_data_to_pool(client)
+        await pool_instance.delete_items(['a', 'b', 'c', 'd'])
+        assert ['e'] == await client.zrange(POOL_NAME, 0, -1)
+
+        assert [POOL_NAME] == await client.keys('*')
+
+    await deactivate_test(client)
+
+
 async def _load_test_data_to_pool(client):
     prepared_items = {
         'a': TEST_TIME - 10 + 600.1,
