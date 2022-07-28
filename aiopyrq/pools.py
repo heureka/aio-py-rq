@@ -187,14 +187,14 @@ class Pool(object):
                 break
 
     async def delete_item(self, item) -> None:
-        """ Will delete all item from pool.
+        """ Will delete item from pool.
         :param item: Anything that is convertible to str
         """
         await self.redis.zrem(self.name, item)
 
     async def delete_items(self, items: list) -> None:
         """
-        Will delete all items in the pool via pipeline.
+        Will delete items from the pool via pipeline.
         :param items: List of items to be deleted via pipeline
         """
         for chunk in helpers.create_chunks(items, self.options['chunk_size']):
