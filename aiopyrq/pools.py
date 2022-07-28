@@ -186,6 +186,24 @@ class Pool(object):
             if not removed:
                 break
 
+    async def delete_item(self, item) -> None:
+        """ Will delete all item from pool.
+        :param item: Anything that is convertible to str
+        """
+        await self.redis.zrem(self.name, item)
+
+    async def delete_items(self, items: list) -> None:
+        """
+        Will delete all items in the pool via pipeline.
+        :param items: List of items to be deleted via pipeline
+        """
+        for chunk in helpers.create_chunks(items, self.options['chunk_size']):
+            pipeline = self.redis.pipeline()
+            for item in chunk:
+                pipeline.zrem(self.name, item)
+            await pipeline.execute()
+        await self._wait_for_synced_slaves()
+
     async def _wait_for_synced_slaves(self):
         if self.options['synced_slaves_enabled']:
             await helpers.wait_for_synced_slaves(self.redis, self.options['synced_slaves_count'],
