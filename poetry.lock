@@ -170,7 +170,7 @@ testing = ["coverage (==6.2)", "hypothesis (>=5.7.1)", "flaky (>=3.5.0)", "mypy 
 
 [[package]]
 name = "redis"
-version = "4.3.3"
+version = "5.0.0"
 description = "Python client for Redis database and key-value store"
 category = "main"
 optional = false
