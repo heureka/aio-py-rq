@@ -15,7 +15,7 @@ services:
     image: aiopyrq:latest
     command: python -m pytest -vv tests
     environment:
-      REDIS_HOST: redis
+      REDIS_HOST: redis7
     depends_on:
       - redis7
 
@@ -24,7 +24,7 @@ services:
     image: aiopyrq:latest
     command: python -m pytest -vv tests
     environment:
-      REDIS_HOST: redis
+      REDIS_HOST: redis6
     depends_on:
       - redis6
 
@@ -33,7 +33,7 @@ services:
     image: aiopyrq:latest
     command: python -m pytest -vv tests
     environment:
-      REDIS_HOST: redis
+      REDIS_HOST: redis5
     depends_on:
       - redis5
 
@@ -44,19 +44,19 @@ services:
       - ALLOW_EMPTY_PASSWORD=yes
 
   redis7:
-    container_name: redis
+    container_name: redis7
     image: redis:7
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
 
   redis6:
-    container_name: redis
+    container_name: redis6
     image: redis:6
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
 
   redis5:
-    container_name: redis
+    container_name: redis5
     image: redis:5
     environment:
       - ALLOW_EMPTY_PASSWORD=yes

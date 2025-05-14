@@ -365,7 +365,7 @@ class UniqueQueue(object):
             local timeouts = KEYS[4]
             local size = ARGV[1]
             local time = ARGV[2]
-            redis.call('hset', timeouts, processing, time)
+            
             local item
             local items = {}
             for i = 1, size, 1 do
@@ -376,6 +376,13 @@ class UniqueQueue(object):
                 redis.call('srem', set, item)
                 table.insert(items, item)
             end
+            
+            local count = tonumber(redis.call('llen', processing))
+            
+            if count > 0 then
+                redis.call('hset', timeouts, processing, time)
+            end
+            
             return items
             """
 

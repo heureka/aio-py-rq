@@ -23,7 +23,6 @@ from redis.asyncio.utils import from_url
 
 from aiopyrq.queues import Queue
 
-
 QUEUE_NAME = os.getenv('QUEUE_NAME', 'test-queue')
 PROCESSING_QUEUE_SCHEMA = QUEUE_NAME + '-processing-{}[{}][{}]'
 TIMEOUT_QUEUE = QUEUE_NAME + '-timeouts'
@@ -35,7 +34,6 @@ REDIS_PASSWORD = os.getenv('REDIS_PASS', None)
 
 
 async def init_test(**kwargs):
-
     synced_slaves_count = 1
     synced_slaves_timeout = 2
     client = await from_url(url=f'redis://{REDIS_HOST}:{REDIS_PORT}', db=REDIS_DB, password=REDIS_PASSWORD,
@@ -98,14 +96,47 @@ async def test_get_items():
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         for i in [3, 5, 3, 1]:
             await client.execute_command('lpush', QUEUE_NAME, i)
+
+        assert True is not await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
+
         assert ['3', '5', '3'] == await queue_instance.get_items(3)
         assert ['1'] == await queue_instance.get_items(1)
         assert [] == await queue_instance.get_items(1)
+
+        assert True is await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
+
         await client.execute_command('del', queue_instance.processing_queue_name)
         await client.execute_command('del', queue_instance.timeouts_hash_name)
         assert 0 == slaves_mock.call_count
 
     await deactivate_test(client)
+
+
+@pytest.mark.asyncio
+async def test_empty_get_timeouts_queue_not_created():
+    client, queue_instance = await init_test()
+    with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
+        assert True is not await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
+
+        assert [] == await queue_instance.get_items(1)
+
+        assert True is not await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
 
 
 @pytest.mark.asyncio
@@ -132,6 +163,7 @@ async def test_delete_items():
         assert 1 == slaves_mock.call_count
 
     await deactivate_test(client)
+
 
 @pytest.mark.asyncio
 async def test_delete_item_one_occurrence():
@@ -258,14 +290,36 @@ async def test_integration():
     client, queue_instance = await init_test()
     with patch('aiopyrq.helpers.wait_for_synced_slaves') as slaves_mock:
         await queue_instance.add_items([1, 5, 2, 6, 7])
+        assert True is not await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
         assert ['1', '5', '2', '6', '7'] == await queue_instance.get_items(5)
+
+        assert True is await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
+
         assert [] == await queue_instance.get_items(1)
         await queue_instance.ack_items([1, 5])
         assert [] == await queue_instance.get_items(1)
         await queue_instance.reject_items([2, 6, 7])
+        assert True is not await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
         assert ['2', '6', '7'] == await queue_instance.get_items(5)
         await queue_instance.ack_items([2, 6, 7])
         assert 0 == await client.execute_command('llen', QUEUE_NAME)
+        assert True is not await client.execute_command(
+            'hexists',
+            queue_instance.timeouts_hash_name,
+            queue_instance.processing_queue_name
+        )
         assert 4 == slaves_mock.call_count
     await deactivate_test(client)
 
@@ -430,6 +484,7 @@ async def test_rollback_timeout(patch_time):
         assert can_rollback == True
 
     await deactivate_test(client)
+
 
 if __name__ == 'main':
     pytest.main()
