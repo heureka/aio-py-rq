@@ -356,8 +356,6 @@ class Queue(object):
             local item
             local items = {}
 
-            redis.call('hset', timeouts, processing, time)
-
             for i = 1, size, 1 do
                 item = redis.call('rpoplpush', queue, processing)
 
@@ -366,6 +364,12 @@ class Queue(object):
                 end
 
                 table.insert(items, item)
+            end
+            
+            local count = tonumber(redis.call('llen', processing))
+            
+            if count > 0 then
+                redis.call('hset', timeouts, processing, time)
             end
 
             return items
